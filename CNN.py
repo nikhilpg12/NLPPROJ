@@ -1,22 +1,26 @@
 import os
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import pandas as pd
 import numpy as np
-import tensorflow as tf
-
+import pandas as pd
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.layers import Input, Embedding, Conv1D, GlobalMaxPooling1D, Dense, Dropout, Concatenate
-from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import (
+    Concatenate,
+    Conv1D,
+    Dense,
+    Dropout,
+    Embedding,
+    GlobalMaxPooling1D,
+    Input,
+)
+from tensorflow.keras.models import Model
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 
-# =========================
-# 1. Load data
-# =========================
+#Load data
 train_df = pd.read_csv("train.csv")
 eval_df = pd.read_csv("evaluation.csv")
 test_df = pd.read_csv("test.csv")
@@ -29,9 +33,9 @@ y_train_text = train_df["author_id"]
 y_eval_text = eval_df["author_id"]
 y_test_text = test_df["author_id"]
 
-# =========================
-# 2. Encode labels
-# =========================
+
+
+#Encode labels
 label_encoder = LabelEncoder()
 
 y_train = label_encoder.fit_transform(y_train_text)
@@ -43,9 +47,9 @@ num_authors = len(label_encoder.classes_)
 print("Number of authors:", num_authors)
 print("Authors:", list(label_encoder.classes_))
 
-# =========================
-# 3. Tokenise text
-# =========================
+
+
+#Tokenise text
 vocab_size = 15000
 max_length = 300
 
@@ -60,9 +64,9 @@ X_train = pad_sequences(X_train, maxlen=max_length, padding="post", truncating="
 X_eval = pad_sequences(X_eval, maxlen=max_length, padding="post", truncating="post")
 X_test = pad_sequences(X_test, maxlen=max_length, padding="post", truncating="post")
 
-# =========================
-# 4. Build Multi-Filter CNN Model
-# =========================
+
+
+#Build Multi-Filter CNN Model
 input_layer = Input(shape=(max_length,))
 
 embedding = Embedding(
@@ -95,9 +99,7 @@ model.compile(
 
 model.summary()
 
-# =========================
-# 5. Train model
-# =========================
+# Train model
 early_stop = EarlyStopping(
     monitor="val_loss",
     patience=3,
@@ -113,9 +115,7 @@ history = model.fit(
     callbacks=[early_stop]
 )
 
-# =========================
-# 6. Evaluate model
-# =========================
+# Evaluate model
 y_pred_probs = model.predict(X_test)
 y_pred = np.argmax(y_pred_probs, axis=1)
 

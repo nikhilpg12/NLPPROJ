@@ -25,17 +25,16 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.optimizers import Adam
 
-# =========================
+
 # Reproducibility
-# =========================
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 tf.random.set_seed(SEED)
 
-# =========================
-# 1. Load data
-# =========================
+
+#Load data
 train_df = pd.read_csv("train.csv")
 eval_df = pd.read_csv("evaluation.csv")
 test_df = pd.read_csv("test.csv")
@@ -48,9 +47,8 @@ y_train_text = train_df["author_id"]
 y_eval_text = eval_df["author_id"]
 y_test_text = test_df["author_id"]
 
-# =========================
-# 2. Encode labels
-# =========================
+
+# Encode labels
 label_encoder = LabelEncoder()
 
 y_train = label_encoder.fit_transform(y_train_text)
@@ -62,9 +60,8 @@ num_authors = len(label_encoder.classes_)
 print("Number of authors:", num_authors)
 print("Authors:", list(label_encoder.classes_))
 
-# =========================
-# 3. Tokenise text
-# =========================
+
+# Tokenise text
 vocab_size = 15000
 max_length = 300
 
@@ -79,9 +76,8 @@ X_train = pad_sequences(X_train, maxlen=max_length, padding="post", truncating="
 X_eval = pad_sequences(X_eval, maxlen=max_length, padding="post", truncating="post")
 X_test = pad_sequences(X_test, maxlen=max_length, padding="post", truncating="post")
 
-# =========================
-# 4. Improved CNN-LSTM Model
-# =========================
+
+# Improved CNN-LSTM Model
 model = Sequential([
     Embedding(input_dim=vocab_size, output_dim=128),
 
@@ -106,9 +102,8 @@ model.compile(
 
 model.summary()
 
-# =========================
-# 5. Train model
-# =========================
+
+# Train model
 early_stop = EarlyStopping(
     monitor="val_loss",
     patience=5,
@@ -131,9 +126,8 @@ history = model.fit(
     callbacks=[early_stop, reduce_lr]
 )
 
-# =========================
-# 6. Test evaluation
-# =========================
+
+# Test evaluation
 y_pred_probs = model.predict(X_test)
 y_pred = np.argmax(y_pred_probs, axis=1)
 
