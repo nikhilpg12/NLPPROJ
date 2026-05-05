@@ -1,4 +1,0 @@
-file,output,original_rows,missing_text_rows_removed,duplicate_rows_removed,cleaned_rows,missing_titles_filled,missing_authors_filled
-train (1).csv,train_cleaned.csv,130,5,0,125,3,4
-eval.csv,eval_cleaned.csv,28,0,0,28,1,2
-test.csv,test_cleaned.csv,28,0,0,28,1,2
