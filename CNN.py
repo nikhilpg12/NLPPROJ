@@ -1,4 +1,5 @@
 import os
+import json
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -110,7 +111,7 @@ history = model.fit(
     X_train,
     y_train,
     validation_data=(X_eval, y_eval),
-    epochs=20,
+    epochs=50,
     batch_size=16,
     callbacks=[early_stop]
 )
@@ -131,6 +132,59 @@ print(classification_report(
 
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
+
+
+# ── Save data for graph.py ──────────────────────────────────────────────────
+
+# Create out/ dir
+os.makedirs("out", exist_ok=True)
+
+# Training history
+with open("out/history.json", "w") as f:
+    json.dump(history.history, f)
+
+# Latent-space activations (dense layer output) for ALL splits
+latent_model = Model(inputs=model.input, outputs=model.get_layer("dense").output)
+
+latent_rows = []
+for X_split, y_split, split_name in [
+    (X_train, y_train, "train"),
+    (X_eval,  y_eval,  "eval"),
+    (X_test,  y_test,  "test"),
+]:
+    acts = latent_model.predict(X_split, verbose=0)
+    for i, vec in enumerate(acts):
+        latent_rows.append({
+            "split": split_name,
+            "true_label": int(y_split[i]),
+            "author": label_encoder.classes_[y_split[i]],
+            **{f"d{j}": float(v) for j, v in enumerate(vec)},
+        })
+
+pd.DataFrame(latent_rows).to_csv("out/latent_activations.csv", index=False)
+
+# Per-sample predictions (test set)
+test_pred_probs = model.predict(X_test, verbose=0)
+test_pred_labels = np.argmax(test_pred_probs, axis=1)
+test_confidence = test_pred_probs.max(axis=1)
+
+pred_df = pd.DataFrame({
+    "true_label": y_test,
+    "pred_label": test_pred_labels,
+    "true_author": label_encoder.inverse_transform(y_test),
+    "pred_author": label_encoder.inverse_transform(test_pred_labels),
+    "confidence": test_confidence,
+    "correct": (y_test == test_pred_labels).astype(int),
+})
+pred_df.to_csv("out/test_predictions.csv", index=False)
+
+# Confusion matrix + class names
+cm = confusion_matrix(y_test, test_pred_labels)
+np.save("out/confusion_matrix.npy", cm)
+with open("out/class_names.json", "w") as f:
+    json.dump(list(label_encoder.classes_), f)
+
+print("\nPlot data saved: history.json, latent_activations.csv, test_predictions.csv, confusion_matrix.npy, class_names.json")
 
 
 #Results:
