@@ -1,30 +1,29 @@
+import json
 import os
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import random
+
 import numpy as np
 import pandas as pd
-
 import tensorflow as tf
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.preprocessing import LabelEncoder
-
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import (
-    Embedding,
-    Conv1D,
-    MaxPooling1D,
-    Bidirectional,
     LSTM,
+    Bidirectional,
+    Conv1D,
     Dense,
     Dropout,
-    SpatialDropout1D
+    Embedding,
+    MaxPooling1D,
+    SpatialDropout1D,
 )
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.optimizers import Adam
-
 
 # Reproducibility
 
@@ -78,21 +77,18 @@ X_test = pad_sequences(X_test, maxlen=max_length, padding="post", truncating="po
 
 
 # Improved CNN-LSTM Model
-model = Sequential([
-    Embedding(input_dim=vocab_size, output_dim=128),
+input_layer = tf.keras.Input(shape=(max_length,))
+x = Embedding(input_dim=vocab_size, output_dim=128)(input_layer)
+x = SpatialDropout1D(0.2)(x)
+x = Conv1D(filters=64, kernel_size=3, activation="relu", padding="same")(x)
+x = MaxPooling1D(pool_size=2)(x)
+x = Bidirectional(LSTM(64, dropout=0.3, recurrent_dropout=0.2))(x)
+dense_out = Dense(64, activation="relu")(x)
+x = Dropout(0.5)(dense_out)
+x = Dense(48, activation="relu")(x)
+output_layer = Dense(num_authors, activation="softmax")(x)
 
-    SpatialDropout1D(0.2),
-
-    Conv1D(filters=64, kernel_size=3, activation="relu", padding="same"),
-    MaxPooling1D(pool_size=2),
-
-    Bidirectional(LSTM(64, dropout=0.3, recurrent_dropout=0.2)),
-
-    Dense(64, activation="relu"),
-    Dropout(0.5),
-
-    Dense(num_authors, activation="softmax")
-])
+model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
 
 model.compile(
     optimizer=Adam(learning_rate=0.001),
@@ -143,6 +139,59 @@ print(classification_report(
 
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
+
+
+# ── Save data for graph.py ──────────────────────────────────────────────────
+os.makedirs("out", exist_ok=True)
+
+# 1. Training history
+with open("out/history.json", "w") as f:
+    json.dump(history.history, f)
+
+# 2. Latent-space activations (dense layer output) for ALL splits
+from tensorflow.keras.models import Model
+
+latent_model = Model(inputs=model.input, outputs=dense_out)
+
+latent_rows = []
+for X_split, y_split, split_name in [
+    (X_train, y_train, "train"),
+    (X_eval,  y_eval,  "eval"),
+    (X_test,  y_test,  "test"),
+]:
+    acts = latent_model.predict(X_split, verbose=0)
+    for i, vec in enumerate(acts):
+        latent_rows.append({
+            "split": split_name,
+            "true_label": int(y_split[i]),
+            "author": label_encoder.classes_[y_split[i]],
+            **{f"d{j}": float(v) for j, v in enumerate(vec)},
+        })
+
+pd.DataFrame(latent_rows).to_csv("out/latent_activations.csv", index=False)
+
+# 3. Per-sample predictions (test set)
+test_pred_probs = model.predict(X_test, verbose=0)
+test_pred_labels = np.argmax(test_pred_probs, axis=1)
+test_confidence = test_pred_probs.max(axis=1)
+
+pred_df = pd.DataFrame({
+    "true_label": y_test,
+    "pred_label": test_pred_labels,
+    "true_author": label_encoder.inverse_transform(y_test),
+    "pred_author": label_encoder.inverse_transform(test_pred_labels),
+    "confidence": test_confidence,
+    "correct": (y_test == test_pred_labels).astype(int),
+})
+pred_df.to_csv("out/test_predictions.csv", index=False)
+
+# 4. Confusion matrix + class names
+cm = confusion_matrix(y_test, test_pred_labels)
+np.save("out/confusion_matrix.npy", cm)
+with open("out/class_names.json", "w") as f:
+    json.dump(list(label_encoder.classes_), f)
+
+print("\nPlot data saved to out/")
 
 #CNN performs better than CNN-LSTM on smaller datasets because convolutional layers effectively
 # capture local stylistic patterns, while LSTM layers introduce additional
